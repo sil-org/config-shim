@@ -117,6 +117,12 @@ func getVars(config string) []string {
 		if len(l) == 0 || strings.HasPrefix(l, "#") || !strings.Contains(l, "=") {
 			continue
 		}
+
+		// strip quotes if present
+		if l[0:1] == `"` && l[len(l)-1:] == `"` {
+			l = l[1 : len(l)-1]
+		}
+
 		vars = append(vars, l)
 	}
 

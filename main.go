@@ -99,7 +99,7 @@ func getConfig(params AppConfigParams) ([]string, error) {
 		return nil, err
 	}
 
-	vars := strings.Split(string(configuration.Configuration), "\n")
+	vars := getVars(string(configuration.Configuration))
 
 	if verbose {
 		log.Printf("read %d lines", len(vars))
@@ -107,4 +107,18 @@ func getConfig(params AppConfigParams) ([]string, error) {
 	}
 
 	return vars, nil
+}
+
+func getVars(config string) []string {
+	lines := strings.Split(config, "\n")
+
+	var vars []string
+	for _, l := range lines {
+		if len(l) == 0 || strings.HasPrefix(l, "#") || !strings.Contains(l, "=") {
+			continue
+		}
+		vars = append(vars, l)
+	}
+
+	return vars
 }

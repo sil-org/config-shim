@@ -18,6 +18,8 @@ checksum:
 snapshot:
   name_template: "{{ .Tag }}-next"
 archives:
-- files:
-    # publish only the binary file (https://goreleaser.com/customization/archive/#packaging-only-the-binaries)
+- format: gz
+  name_template: "{{ .ProjectName }}"
+  files:
+  # publish only the binary file (https://goreleaser.com/customization/archive/#packaging-only-the-binaries)
   - none*

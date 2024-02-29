@@ -67,10 +67,8 @@ func readFlags() (params AppConfigParams) {
 		os.Exit(1)
 	}
 
-	if verbose {
-		log.Printf("reading from app %q, env %q, profile %q",
-			params.applicationID, params.environmentID, params.configProfileID)
-	}
+	log.Printf("reading from AppConfig app %q, env %q, config profile %q",
+		params.applicationID, params.environmentID, params.configProfileID)
 
 	return
 }
@@ -101,8 +99,8 @@ func getConfig(params AppConfigParams) ([]string, error) {
 
 	vars := getVars(string(configuration.Configuration))
 
+	log.Printf("read %d lines from AppConfig", len(vars))
 	if verbose {
-		log.Printf("read %d lines", len(vars))
 		log.Printf("vars: %s", vars)
 	}
 

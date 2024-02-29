@@ -114,17 +114,22 @@ func getVars(config string) []string {
 
 	var vars []string
 	for _, l := range lines {
-		if len(l) == 0 || strings.HasPrefix(l, "#") || !strings.Contains(l, "=") {
-			continue
+		if parsed := parseLine(l); parsed != "" {
+			vars = append(vars, l)
 		}
-
-		// strip quotes if present
-		if l[0:1] == `"` && l[len(l)-1:] == `"` {
-			l = l[1 : len(l)-1]
-		}
-
-		vars = append(vars, l)
 	}
 
 	return vars
+}
+
+func parseLine(line string) string {
+	if len(line) == 0 || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+		return ""
+	}
+
+	// strip quotes if present
+	if line[0:1] == `"` && line[len(line)-1:] == `"` {
+		line = line[1 : len(line)-1]
+	}
+	return line
 }

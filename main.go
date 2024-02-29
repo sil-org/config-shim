@@ -126,8 +126,11 @@ func parseLine(line string) string {
 	}
 
 	// strip quotes if present
-	if line[0:1] == `"` && line[len(line)-1:] == `"` {
-		line = line[1 : len(line)-1]
+	split := strings.Split(line, "=")
+	key := split[0]
+	value := split[1]
+	if value[0:1] == `"` && value[len(value)-1:] == `"` {
+		line = key + "=" + value[1:len(value)-1]
 	}
 	return line
 }

@@ -25,7 +25,7 @@ func main() {
 
 	vars, err := getConfig(params)
 	if err != nil {
-		fmt.Printf("failed to get config: %s", err)
+		fmt.Printf("failed to get config: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -36,7 +36,7 @@ func main() {
 	cmd.Stderr = os.Stderr
 
 	if verbose {
-		fmt.Printf("running %q with args: %s and env: %s", args[0], args[1:], cmd.Env)
+		fmt.Printf("running %q with args: %s and env: %s\n", args[0], args[1:], cmd.Env)
 	}
 	if err = cmd.Run(); err != nil {
 		os.Exit(2)
@@ -51,24 +51,24 @@ func readFlags() (params AppConfigParams) {
 	flag.Parse()
 
 	if params.applicationID == "" {
-		fmt.Printf("specify application identifier with --app flag")
+		fmt.Println("specify application identifier with --app flag")
 		os.Exit(1)
 	}
 	if params.environmentID == "" {
-		fmt.Printf("specify environment identifier with --env flag")
+		fmt.Println("specify environment identifier with --env flag")
 		os.Exit(1)
 	}
 	if params.configProfileID == "" {
-		fmt.Printf("specify config profile identifier with --config flag")
+		fmt.Println("specify config profile identifier with --config flag")
 		os.Exit(1)
 	}
 
 	if flag.Arg(0) == "" {
-		fmt.Printf("must specify program to execute")
+		fmt.Println("must specify program to execute")
 		os.Exit(1)
 	}
 
-	fmt.Printf("reading from AppConfig app %q, env %q, config profile %q",
+	fmt.Printf("reading from AppConfig app %q, env %q, config profile %q\n",
 		params.applicationID, params.environmentID, params.configProfileID)
 
 	return
@@ -100,9 +100,9 @@ func getConfig(params AppConfigParams) ([]string, error) {
 
 	vars := getVars(string(configuration.Configuration))
 
-	fmt.Printf("read %d lines from AppConfig", len(vars))
+	fmt.Printf("read %d lines from AppConfig\n", len(vars))
 	if verbose {
-		fmt.Printf("vars: %s", vars)
+		fmt.Printf("vars: %s\n", vars)
 	}
 
 	return vars, nil

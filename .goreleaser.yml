@@ -1,0 +1,25 @@
+# This is the configuration for goreleaser
+# Check the documentation at http://goreleaser.com for details
+before:
+  hooks:
+  - go mod tidy
+builds:
+- env:
+  - CGO_ENABLED=0
+  goos:
+  - linux
+  goarch:
+  - amd64
+  ldflags:
+  - -s -w
+  - -X '{{.ModulePath}}/cmd.version={{.Version}}'
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-next"
+archives:
+- format: gz
+  name_template: "{{ .ProjectName }}"
+  files:
+  # publish only the binary file (https://goreleaser.com/customization/archive/#packaging-only-the-binaries)
+  - none*

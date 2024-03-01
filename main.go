@@ -63,7 +63,7 @@ func readFlags() (params AppConfigParams) {
 		os.Exit(1)
 	}
 
-	if flag.Arg(0) == "" {
+	if flag.NArg() == 0 {
 		fmt.Println("must specify program to execute")
 		os.Exit(1)
 	}

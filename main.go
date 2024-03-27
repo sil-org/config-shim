@@ -133,8 +133,5 @@ func parseLine(line string) string {
 	if len(value) > 1 && value[0:1] == `"` && value[len(value)-1:] == `"` {
 		line = key + "=" + value[1:len(value)-1]
 	}
-	if verbose {
-		fmt.Printf("key: %q, value: %q %d\n", key, value, len(value))
-	}
 	return line
 }

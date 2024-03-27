@@ -17,6 +17,11 @@ func Test_getVars(t *testing.T) {
 			want:   nil,
 		},
 		{
+			name:   "no value",
+			config: "A=",
+			want:   []string{"A="},
+		},
+		{
 			name:   "one var",
 			config: "A=B",
 			want:   []string{"A=B"},
@@ -51,6 +56,11 @@ func Test_parseLine(t *testing.T) {
 			name: "empty",
 			line: "",
 			want: "",
+		},
+		{
+			name: "no value",
+			line: "A=",
+			want: "A=",
 		},
 		{
 			name: "comment",

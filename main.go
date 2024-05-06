@@ -127,9 +127,7 @@ func parseLine(line string) string {
 	}
 
 	// strip quotes if present
-	split := strings.Split(line, "=")
-	key := split[0]
-	value := split[1]
+	key, value, _ := strings.Cut(line, "=")
 	if len(value) > 1 && value[0:1] == `"` && value[len(value)-1:] == `"` {
 		line = key + "=" + value[1:len(value)-1]
 	}

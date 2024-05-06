@@ -36,6 +36,11 @@ func Test_getVars(t *testing.T) {
 			config: "A=B\n# comment\nC=D",
 			want:   []string{"A=B", "C=D"},
 		},
+		{
+			name:   "one var with equals in value",
+			config: `A="abc123="`,
+			want:   []string{`A="abc123="`},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -81,6 +86,16 @@ func Test_parseLine(t *testing.T) {
 			name: "with quotes",
 			line: `A="B C"`,
 			want: "A=B C",
+		},
+		{
+			name: "contains equals",
+			line: `A=abc123=`,
+			want: "A=abc123=",
+		},
+		{
+			name: "with quotes and contains equals",
+			line: `A="abc123="`,
+			want: "A=abc123=",
 		},
 	}
 	for _, tt := range tests {

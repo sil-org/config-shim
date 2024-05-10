@@ -39,7 +39,12 @@ func Test_getVars(t *testing.T) {
 		{
 			name:   "one var with equals in value",
 			config: `A="abc123="`,
-			want:   []string{`A="abc123="`},
+			want:   []string{`A=abc123=`},
+		},
+		{
+			name:   "everything",
+			config: "A=B\n# comment\nC=D=\nE=\"=F\"\n#G=H",
+			want:   []string{"A=B", "C=D=", "E==F"},
 		},
 	}
 	for _, tt := range tests {

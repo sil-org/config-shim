@@ -114,7 +114,7 @@ func getVars(config string) []string {
 	var vars []string
 	for _, l := range lines {
 		if parsed := parseLine(l); parsed != "" {
-			vars = append(vars, l)
+			vars = append(vars, parsed)
 		}
 	}
 

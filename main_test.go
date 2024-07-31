@@ -38,6 +38,11 @@ func Test_getVars(t *testing.T) {
 		},
 		{
 			name:   "one var with equals in value",
+			config: `A=abc123=`,
+			want:   []string{`A=abc123=`},
+		},
+		{
+			name:   "one var with equals in value, surrounded by quotes",
 			config: `A="abc123="`,
 			want:   []string{`A=abc123=`},
 		},
@@ -49,7 +54,8 @@ func Test_getVars(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := getVars(tt.config); !reflect.DeepEqual(got, tt.want) {
+			got := getVars(tt.config)
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getVars() = %v, want %v", got, tt.want)
 			}
 		})

@@ -1,7 +1,8 @@
 package main
 
 import (
-	"reflect"
+	"os"
+	"slices"
 	"testing"
 )
 
@@ -39,12 +40,17 @@ func Test_getVars(t *testing.T) {
 		{
 			name:   "one var with equals in value",
 			config: `A=abc123=`,
-			want:   []string{`A=abc123=`},
+			want:   []string{"A=abc123="},
 		},
 		{
 			name:   "one var with equals in value, surrounded by quotes",
 			config: `A="abc123="`,
-			want:   []string{`A=abc123=`},
+			want:   []string{"A=abc123="},
+		},
+		{
+			name:   "comment after value",
+			config: `A=abc123 # comment`,
+			want:   []string{"A=abc123"},
 		},
 		{
 			name:   "everything",
@@ -54,65 +60,138 @@ func Test_getVars(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getVars(tt.config)
-			if !reflect.DeepEqual(got, tt.want) {
+			got, err := getVars([]byte(tt.config))
+			if err != nil {
+				t.Errorf("getVars returned err %v, want nil", err)
+			}
+			slices.Sort(got)
+			slices.Sort(tt.want)
+			if !slices.Equal(got, tt.want) {
 				t.Errorf("getVars() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_parseLine(t *testing.T) {
+func Test_replaceConfigValues(t *testing.T) {
+	savedGOOS := os.Getenv("GOOS")
+	defer func() {
+		err := os.Setenv("GOOS", savedGOOS)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	err := os.Setenv("GOOS", "linux")
+	if err != nil {
+		panic(err)
+	}
+
 	tests := []struct {
-		name string
-		line string
-		want string
+		name    string
+		line    string
+		want    string
+		wantErr bool
 	}{
 		{
-			name: "empty",
-			line: "",
-			want: "",
+			name:    "no update, no comment",
+			line:    "GOOS=windows\nGOARCH=amd64\n",
+			want:    "GOOS=windows\nGOARCH=amd64\n",
+			wantErr: false,
 		},
 		{
-			name: "no value",
-			line: "A=",
-			want: "A=",
-		},
-		{
-			name: "comment",
-			line: "# comment",
-			want: "",
-		},
-		{
-			name: "no =",
-			line: "FOO",
-			want: "",
-		},
-		{
-			name: "no quotes",
-			line: "A=B",
-			want: "A=B",
-		},
-		{
-			name: "with quotes",
-			line: `A="B C"`,
-			want: "A=B C",
-		},
-		{
-			name: "contains equals",
-			line: `A=abc123=`,
-			want: "A=abc123=",
-		},
-		{
-			name: "with quotes and contains equals",
-			line: `A="abc123="`,
-			want: "A=abc123=",
+			name:    "simple update",
+			line:    "GOOS=windows # {update}\nGOARCH=amd64\n",
+			want:    "GOOS='linux' # {update}\nGOARCH=amd64\n",
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := parseLine(tt.line); got != tt.want {
-				t.Errorf("parseLine() = %v, want %v", got, tt.want)
+			got, err := replaceConfigValues([]byte(tt.line))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("replaceLine() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("replaceLine() got = '%v', want '%v'", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_replaceLine(t *testing.T) {
+	savedGOOS := os.Getenv("GOOS")
+	defer func() {
+		err := os.Setenv("GOOS", savedGOOS)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	err := os.Setenv("GOOS", "linux")
+	if err != nil {
+		panic(err)
+	}
+
+	tests := []struct {
+		name     string
+		line     string
+		variable string
+		newValue string
+		want     string
+		wantErr  bool
+	}{
+		{
+			name:     "no update, no comment",
+			line:     "GOOS=windows",
+			variable: "GOOS",
+			newValue: "linux",
+			want:     "GOOS=windows",
+			wantErr:  false,
+		},
+		{
+			name:     "no update, preserve the comment",
+			line:     "GOOS=windows # GOOS is the target OS",
+			variable: "GOOS",
+			newValue: "linux",
+			want:     "GOOS=windows # GOOS is the target OS",
+			wantErr:  false,
+		},
+		{
+			name:     "simple update",
+			line:     "GOOS=windows # {update}",
+			variable: "GOOS",
+			newValue: "linux",
+			want:     "GOOS='linux' # {update}",
+			wantErr:  false,
+		},
+		{
+			name:     "update with other comment characters",
+			line:     "GOOS=windows # GOOS is the target OS {update} it should be replaced with 'linux'",
+			variable: "GOOS",
+			newValue: "linux",
+			want:     "GOOS='linux' # GOOS is the target OS {update} it should be replaced with 'linux'",
+			wantErr:  false,
+		},
+		{
+			name:     "update with quoted value",
+			line:     "GOOS='windows' # {update}",
+			variable: "GOOS",
+			newValue: "linux",
+			want:     "GOOS='linux' # {update}",
+			wantErr:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := replaceLine(tt.line, tt.variable, tt.newValue)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("replaceLine() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("replaceLine() got = '%v', want '%v'", got, tt.want)
 			}
 		})
 	}

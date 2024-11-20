@@ -182,6 +182,14 @@ func Test_replaceLine(t *testing.T) {
 			want:     "GOOS='linux' # {update}",
 			wantErr:  false,
 		},
+		{
+			name:     "{update} actually in the value should be ignored",
+			line:     "GOOS='windows{update}'",
+			variable: "GOOS",
+			newValue: "linux",
+			want:     "GOOS='windows{update}'",
+			wantErr:  false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

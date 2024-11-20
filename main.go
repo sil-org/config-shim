@@ -106,8 +106,6 @@ func readFlags() (params AppConfigParams) {
 	return
 }
 
-var n int
-
 // getConfig gets the latest configuration from AWS AppConfig for the specified app, profile, and environment
 func getConfig(params AppConfigParams) ([]byte, error) {
 	ctx := context.Background()
@@ -210,12 +208,12 @@ func replaceLine(line, variable, newValue string) (string, error) {
 		return line, nil
 	}
 
-	if !strings.Contains(line, "{update}") {
+	parts := strings.SplitN(line, "#", 2)
+	if len(parts) != 2 {
 		return line, nil
 	}
 
-	parts := strings.SplitN(line, "#", 2)
-	if len(parts) != 2 {
+	if !strings.Contains(parts[1], "{update}") {
 		return line, nil
 	}
 

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -8,24 +10,44 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/appconfig"
 	"github.com/aws/aws-sdk-go-v2/service/appconfigdata"
+	"github.com/joho/godotenv"
 )
 
-var verbose bool
+var (
+	verbose bool
+	update  bool
+)
 
 type AppConfigParams struct {
-	applicationID   string
-	environmentID   string
-	configProfileID string
+	applicationID        string
+	environmentID        string
+	configProfileID      string
+	deploymentStrategyID string
 }
 
 func main() {
 	params := readFlags()
 
-	vars, err := getConfig(params)
+	cfgBytes, err := getConfig(params)
 	if err != nil {
 		fmt.Printf("failed to get config: %s\n", err)
+		os.Exit(1)
+	}
+
+	if update {
+		if err := updateConfig(params, cfgBytes); err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
+	}
+
+	vars, err := getVars(cfgBytes)
+	if err != nil {
+		fmt.Printf("failed to get vars: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -43,10 +65,13 @@ func main() {
 	}
 }
 
+// readFlags gets CLI flags as needed for this command
 func readFlags() (params AppConfigParams) {
 	flag.StringVar(&params.applicationID, "app", "", "application identifier")
 	flag.StringVar(&params.environmentID, "env", "", "environment identifier")
 	flag.StringVar(&params.configProfileID, "config", "", "config profile identifier")
+	flag.StringVar(&params.deploymentStrategyID, "strategy", "", "deployment strategy identifier")
+	flag.BoolVar(&update, "u", false, "update config profile with value from environment")
 	flag.BoolVar(&verbose, "v", false, "verbose output")
 	flag.Parse()
 
@@ -54,12 +79,19 @@ func readFlags() (params AppConfigParams) {
 		fmt.Println("specify application identifier with --app flag")
 		os.Exit(1)
 	}
+
 	if params.environmentID == "" {
 		fmt.Println("specify environment identifier with --env flag")
 		os.Exit(1)
 	}
+
 	if params.configProfileID == "" {
 		fmt.Println("specify config profile identifier with --config flag")
+		os.Exit(1)
+	}
+
+	if update && params.deploymentStrategyID == "" {
+		fmt.Println("deployment strategy identifier is required for update mode, use --strategy flag")
 		os.Exit(1)
 	}
 
@@ -74,7 +106,8 @@ func readFlags() (params AppConfigParams) {
 	return
 }
 
-func getConfig(params AppConfigParams) ([]string, error) {
+// getConfig gets the latest configuration from AWS AppConfig for the specified app, profile, and environment
+func getConfig(params AppConfigParams) ([]byte, error) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -98,38 +131,134 @@ func getConfig(params AppConfigParams) ([]string, error) {
 		return nil, err
 	}
 
-	vars := getVars(string(configuration.Configuration))
+	return configuration.Configuration, nil
+}
+
+// getVars parses a config in env format and returns a slice of variable-value strings like "VAR=value" suitable to
+// supply to the Env attribute of the os/exec Cmd struct.
+func getVars(config []byte) ([]string, error) {
+	vars, err := godotenv.Parse(bytes.NewReader(config))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse configuration from AppConfig: %w", err)
+	}
 
 	fmt.Printf("read %d lines from AppConfig\n", len(vars))
 	if verbose {
 		fmt.Printf("vars: %s\n", vars)
 	}
 
-	return vars, nil
+	varSlice := make([]string, 0, len(vars))
+	for k, v := range vars {
+		varSlice = append(varSlice, k+"="+v)
+	}
+
+	return varSlice, nil
 }
 
-func getVars(config string) []string {
-	lines := strings.Split(config, "\n")
+// updateConfig looks in the config file for variables that should be updated from the local environment, swaps out
+// the value, and sends the new config file to AWS AppConfig
+func updateConfig(params AppConfigParams, cfgBytes []byte) error {
+	newCfg, err := replaceConfigValues(cfgBytes)
+	if err != nil {
+		return fmt.Errorf("failure replacing values: %w", err)
+	}
 
-	var vars []string
-	for _, l := range lines {
-		if parsed := parseLine(l); parsed != "" {
-			vars = append(vars, parsed)
+	err = deployNewConfig(params, newCfg)
+	if err != nil {
+		return fmt.Errorf("failed to deploy config: %w", err)
+	}
+
+	if verbose {
+		fmt.Printf("updated config: %s\n", newCfg)
+	}
+	return nil
+}
+
+// replaceConfigValues substitutes values from the local environment into designated variables in the config file
+func replaceConfigValues(cfg []byte) (string, error) {
+	localEnv := os.Environ()
+	envVars, err := godotenv.Parse(strings.NewReader(strings.Join(localEnv, "\n")))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse environment variables using godotenv.Parse: %w", err)
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(cfg))
+	var output strings.Builder
+	for scanner.Scan() {
+		line := scanner.Text()
+		for k, v := range envVars {
+			var err error
+			line, err = replaceLine(line, k, v)
+			if err != nil {
+				return "", err
+			}
 		}
+		output.WriteString(line + "\n")
 	}
 
-	return vars
+	if err = scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading input: %w", err)
+	}
+	return output.String(), nil
 }
 
-func parseLine(line string) string {
-	if len(line) == 0 || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
-		return ""
+// replaceLine handles one line of the config file, replacing the variable value if marked for update
+func replaceLine(line, variable, newValue string) (string, error) {
+	if !strings.HasPrefix(line, variable) {
+		return line, nil
 	}
 
-	// strip quotes if present
-	key, value, _ := strings.Cut(line, "=")
-	if len(value) > 1 && value[0:1] == `"` && value[len(value)-1:] == `"` {
-		line = key + "=" + value[1:len(value)-1]
+	parts := strings.SplitN(line, "#", 2)
+	if len(parts) != 2 {
+		return line, nil
 	}
-	return line
+
+	if !strings.Contains(parts[1], "{update}") {
+		return line, nil
+	}
+
+	// this doesn't preserve style (whitespace and quote type or the absence of a quote) but that's fine for now
+	line = fmt.Sprintf("%s='%s' #%s", variable, newValue, parts[1])
+
+	if verbose {
+		fmt.Printf("updated variable '%s' to '%s' in config file\n", variable, newValue)
+	}
+	return line, nil
+}
+
+// deployNewConfig submits a new config file to AWS AppConfig and starts a deployment for it
+func deployNewConfig(params AppConfigParams, cfg string) error {
+	ctx := context.Background()
+	awsCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	client := appconfig.NewFromConfig(awsCfg)
+
+	createVersionInput := appconfig.CreateHostedConfigurationVersionInput{
+		ApplicationId:          aws.String(params.applicationID),
+		ConfigurationProfileId: aws.String(params.configProfileID),
+		Content:                []byte(cfg),
+		ContentType:            aws.String("text/plain"),
+		Description:            aws.String("updated by config-shim"),
+	}
+	version, err := client.CreateHostedConfigurationVersion(ctx, &createVersionInput)
+	if err != nil {
+		return err
+	}
+
+	startDeploymentInput := appconfig.StartDeploymentInput{
+		ApplicationId:          aws.String(params.applicationID),
+		ConfigurationProfileId: aws.String(params.configProfileID),
+		ConfigurationVersion:   aws.String(fmt.Sprintf("%d", version.VersionNumber)),
+		DeploymentStrategyId:   aws.String(params.deploymentStrategyID),
+		EnvironmentId:          aws.String(params.environmentID),
+		Description:            aws.String("updated by config-shim"),
+	}
+	_, err = client.StartDeployment(ctx, &startDeploymentInput)
+	if err != nil {
+		return err
+	}
+	return nil
 }

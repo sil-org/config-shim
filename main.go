@@ -159,8 +159,8 @@ func getVars(config []byte) ([]string, error) {
 
 // updateConfig looks in the config file for variables that should be updated from the local environment, swaps out
 // the value, and sends the new config file to AWS AppConfig
-func updateConfig(params AppConfigParams, cfgBytes []byte) ([]byte, error) {
-	newCfg, err := replaceConfigValues(cfgBytes)
+func updateConfig(params AppConfigParams, configData []byte) ([]byte, error) {
+	newCfg, err := replaceConfigValues(configData)
 	if err != nil {
 		return nil, fmt.Errorf("failure replacing values: %w", err)
 	}

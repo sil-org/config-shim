@@ -30,18 +30,22 @@ type AppConfigParams struct {
 }
 
 func main() {
-	params := readFlags()
+	params, err := readFlags()
+	if err != nil {
+		fmt.Println("Error: " + err.Error())
+		os.Exit(1)
+	}
 
 	configData, err := getConfig(params)
 	if err != nil {
-		fmt.Printf("failed to get config: %s\n", err)
+		fmt.Printf("Error: failed to get config: %s\n", err)
 		os.Exit(1)
 	}
 
 	if update {
 		updatedConfigData, err := updateConfig(params, configData)
 		if err != nil {
-			fmt.Println(err.Error())
+			fmt.Println("Error: " + err.Error())
 			os.Exit(1)
 		}
 		configData = []byte(updatedConfigData)
@@ -49,7 +53,7 @@ func main() {
 
 	vars, err := getVars(configData)
 	if err != nil {
-		fmt.Printf("failed to get vars: %s\n", err)
+		fmt.Printf("Error: failed to get vars: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -63,12 +67,14 @@ func main() {
 		fmt.Printf("running %q with args: %s and env: %s\n", args[0], args[1:], cmd.Env)
 	}
 	if err = cmd.Run(); err != nil {
+		fmt.Printf("Error: command failed: %s\n", err)
 		os.Exit(2)
 	}
 }
 
 // readFlags gets CLI flags as needed for this command
-func readFlags() (params AppConfigParams) {
+func readFlags() (AppConfigParams, error) {
+	var params AppConfigParams
 	flag.StringVar(&params.applicationID, "app", "", "application identifier")
 	flag.StringVar(&params.environmentID, "env", "", "environment identifier")
 	flag.StringVar(&params.configProfileID, "config", "", "config profile identifier")
@@ -78,34 +84,29 @@ func readFlags() (params AppConfigParams) {
 	flag.Parse()
 
 	if params.applicationID == "" {
-		fmt.Println("specify application identifier with --app flag")
-		os.Exit(1)
+		return params, fmt.Errorf("no application ID provided. Specify with --app flag")
 	}
 
 	if params.environmentID == "" {
-		fmt.Println("specify environment identifier with --env flag")
-		os.Exit(1)
+		return params, fmt.Errorf("no environment ID provided. Specify with --env flag")
 	}
 
 	if params.configProfileID == "" {
-		fmt.Println("specify config profile identifier with --config flag")
-		os.Exit(1)
+		return params, fmt.Errorf("no config profile ID provided. Specify with --config flag")
 	}
 
 	if update && params.deploymentStrategyID == "" {
-		fmt.Println("deployment strategy identifier is required for update mode, use --strategy flag")
-		os.Exit(1)
+		return params, fmt.Errorf("deployment strategy ID is required for update mode. Use --strategy flag")
 	}
 
 	if flag.NArg() == 0 {
-		fmt.Println("must specify program to execute")
-		os.Exit(1)
+		return params, fmt.Errorf("must specify program to execute")
 	}
 
 	fmt.Printf("reading from AppConfig app %q, env %q, config profile %q\n",
 		params.applicationID, params.environmentID, params.configProfileID)
 
-	return
+	return params, nil
 }
 
 // getConfig gets the latest configuration from AWS AppConfig for the specified app, profile, and environment

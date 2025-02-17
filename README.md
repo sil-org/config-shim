@@ -31,7 +31,8 @@ aws appconfig list-deployment-strategies
 - `--path`: Base path for configuration parameters, e.g.: "/my-app/prod"
 
 ### Common Flags
-- `-v`: Verbose. Output more detail for debugging.
+- `-v`: Verbose. Output more detailed messages.
+- `-d`: Debug. Output very detail messages. Includes parameter values, which may contain sensitive information.
 
 ### Command
 All parameters after the last flag are used as the command to execute after loading the environment variables from the config data received from AppConfig.

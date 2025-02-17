@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	debug   bool
 	verbose bool
 	update  bool
 )
@@ -34,12 +35,12 @@ type ConfigParams struct {
 func main() {
 	params, err := readFlags()
 	if err != nil {
-		fmt.Println("Error: " + err.Error())
+		_, _ = fmt.Fprintln(os.Stderr, "Error: "+err.Error())
 		os.Exit(1)
 	}
 
 	if flag.NArg() == 0 {
-		fmt.Println("Error: must specify program to execute")
+		_, _ = fmt.Fprintln(os.Stderr, "Error: must specify program to execute")
 		os.Exit(1)
 	}
 
@@ -51,7 +52,7 @@ func main() {
 
 	vars, err = getConfigFunction(params)
 	if err != nil {
-		fmt.Println("Error: " + err.Error())
+		_, _ = fmt.Fprintln(os.Stderr, "Error: "+err.Error())
 		os.Exit(1)
 	}
 
@@ -61,11 +62,13 @@ func main() {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if verbose {
-		fmt.Printf("running %q with args: %s and env: %s\n", args[0], args[1:], cmd.Env)
+	if debug {
+		fmt.Printf("running %q with args: %s and env:\n%s\n", args[0], args[1:], strings.Join(cmd.Env, "\n"))
+	} else if verbose {
+		fmt.Printf("running %q with args: %+v\n", args[0], args[1:])
 	}
 	if err = cmd.Run(); err != nil {
-		fmt.Printf("Error: command failed: %s\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error: command failed: %s\n", err)
 		os.Exit(2)
 	}
 }
@@ -82,9 +85,13 @@ func readFlags() (ConfigParams, error) {
 
 	flag.BoolVar(&update, "u", false, "update config profile with value from environment")
 	flag.BoolVar(&verbose, "v", false, "verbose output")
+	flag.BoolVar(&debug, "d", false, "debug output")
 	flag.Parse()
 
 	if params.path != "" {
+		if !strings.HasSuffix(params.path, "/") {
+			params.path = params.path + "/"
+		}
 		fmt.Printf("reading from Parameter Store path %q\n", params.path)
 		return params, nil
 	}
@@ -170,8 +177,10 @@ func getVars(config []byte) ([]string, error) {
 		return nil, fmt.Errorf("failed to parse configuration from AppConfig: %w", err)
 	}
 
-	fmt.Printf("read %d lines from AppConfig\n", len(vars))
-	if verbose {
+	if verbose || debug {
+		fmt.Printf("read %d lines from AppConfig\n", len(vars))
+	}
+	if debug {
 		fmt.Printf("vars: %s\n", vars)
 	}
 
@@ -196,7 +205,7 @@ func updateConfig(params ConfigParams, configData []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to deploy config: %w", err)
 	}
 
-	if verbose {
+	if debug {
 		fmt.Printf("updated config: %s\n", newCfg)
 	}
 	return newCfg, nil
@@ -248,7 +257,7 @@ func replaceLine(line, variable, newValue string) (string, error) {
 	// this doesn't preserve style (whitespace and quote type or the absence of a quote) but that's fine for now
 	line = fmt.Sprintf("%s='%s' #%s", variable, newValue, parts[1])
 
-	if verbose {
+	if debug {
 		fmt.Printf("updated variable '%s' to '%s' in config file\n", variable, newValue)
 	}
 	return line, nil
@@ -313,18 +322,22 @@ func getConfigFromPS(p ConfigParams) ([]string, error) {
 	vars := make([]string, 0, len(out.Parameters))
 	for _, v := range out.Parameters {
 		if v.Name == nil {
-			_, _ = fmt.Fprintf(os.Stderr, "SSM returned a parameter with nil name")
+			_, _ = fmt.Fprintf(os.Stderr, "SSM returned a parameter with nil name\n")
 			continue
 		}
 		name := strings.TrimPrefix(*v.Name, p.path)
 
 		if v.Value == nil {
-			_, _ = fmt.Fprintf(os.Stderr, "SSM returned parameter with nil value: %q", name)
+			_, _ = fmt.Fprintf(os.Stderr, "SSM returned parameter with nil value: %q\n", name)
 			continue
 		}
 
 		vars = append(vars, name+"="+(*v.Value))
-		_, _ = fmt.Fprintf(os.Stderr, "parameter read from SSM Parameter Store: %q", name)
+		if verbose {
+			fmt.Printf("read parameter: %q\n", name)
+		} else if debug {
+			fmt.Printf("read parameter: %q = %q\n", name, *v.Value)
+		}
 	}
 	return vars, nil
 }

@@ -1,6 +1,6 @@
 # config-shim
 
-Languages like PHP, when used in a web application environment are not well-suited for application configuration tools like AWS AppConfig. The entire application is initialized for every web request. This means that without persistent data storage, configuration must be fetched from the API on every request. This tool, provides for a quick migration from an environment-based configuration to AppConfig by reading from the config API once at the time the server starts. It passes configuration into environment variables in the process that starts your web server.
+Languages like PHP, when used in a web application environment are not well-suited for application configuration tools like AWS Systems Manager. The entire application is initialized for every web request. This means that without persistent data storage, configuration must be fetched from the API on every request. This tool, provides for a quick migration from an environment-based configuration to AppConfig or Parameter Store by reading from the config API once at the time the server starts. It passes configuration into environment variables in the process that starts your web server.
 
 ## Configuration
 
@@ -14,19 +14,24 @@ config-shim --app my_app --config default --env prod apache2ctl -D FOREGROUND
 
 config-shim command-line parameter format is like `config-shim <flags> <command>`
 
-### Flags
+### AppConfig Flags
 - `--app`: Application Identifier, can be the name of the application or the ID assigned by AWS
 - `--config`: Configuration Profile Identifier, can be the profile name or the ID assigned by AWS
 - `--env`: Environment Identifier, can be the name of the environment or the ID assigned by AWS
 - `--strategy`: Deployment Strategy Identifier, must be the ID assigned by AWS. Only used in Update Mode.
 - `-u`: Update mode. See the [Update Mode](#update-mode) section for details.
-- `-v`: Verbose. Output more detail for debugging.
 
-The application, configuration profile, and environment ID can be found in the AWS Console on the applicable page. However, the deployment strategy ID does not seem to be shown anywhere in the user interface. It can be found using the AWS CLI.
+The application, configuration profile, and environment ID can be found in the AWS Console on the applicable page. However, the deployment strategy ID does not seem to be shown anywhere in the user interface. It can be found using the AWS CLI using the following command:
 
 ```shell
 aws appconfig list-deployment-strategies
 ```
+
+### Parameter Store Flags
+- `--path`: Base path for configuration parameters, e.g.: "/my-app/prod"
+
+### Common Flags
+- `-v`: Verbose. Output more detail for debugging.
 
 ### Command
 All parameters after the last flag are used as the command to execute after loading the environment variables from the config data received from AppConfig.

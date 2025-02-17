@@ -14,42 +14,45 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/appconfig"
 	"github.com/aws/aws-sdk-go-v2/service/appconfigdata"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/joho/godotenv"
 )
 
 var (
+	debug   bool
 	verbose bool
 	update  bool
 )
 
-type AppConfigParams struct {
+type ConfigParams struct {
 	applicationID        string
 	environmentID        string
 	configProfileID      string
 	deploymentStrategyID string
+	path                 string
 }
 
 func main() {
-	params := readFlags()
-
-	configData, err := getConfig(params)
+	params, err := readFlags()
 	if err != nil {
-		fmt.Printf("failed to get config: %s\n", err)
+		_, _ = fmt.Fprintln(os.Stderr, "Error: "+err.Error())
 		os.Exit(1)
 	}
 
-	if update {
-		updatedConfigData, err := updateConfig(params, configData)
-		if err != nil {
-			fmt.Println(err.Error())
-			os.Exit(1)
-		}
-		configData = []byte(updatedConfigData)
+	if flag.NArg() == 0 {
+		_, _ = fmt.Fprintln(os.Stderr, "Error: must specify program to execute")
+		os.Exit(1)
 	}
 
-	vars, err := getVars(configData)
+	var vars []string
+	getConfigFunction := getConfigFromPS
+	if params.path == "" {
+		getConfigFunction = getConfigFromAppConfig
+	}
+
+	vars, err = getConfigFunction(params)
 	if err != nil {
-		fmt.Printf("failed to get vars: %s\n", err)
+		_, _ = fmt.Fprintln(os.Stderr, "Error: "+err.Error())
 		os.Exit(1)
 	}
 
@@ -59,57 +62,87 @@ func main() {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if verbose {
-		fmt.Printf("running %q with args: %s and env: %s\n", args[0], args[1:], cmd.Env)
+	if debug {
+		fmt.Printf("running %q with args: %s and env:\n%s\n", args[0], args[1:], strings.Join(cmd.Env, "\n"))
+	} else if verbose {
+		fmt.Printf("running %q with args: %+v\n", args[0], args[1:])
 	}
 	if err = cmd.Run(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Error: command failed: %s\n", err)
 		os.Exit(2)
 	}
 }
 
 // readFlags gets CLI flags as needed for this command
-func readFlags() (params AppConfigParams) {
-	flag.StringVar(&params.applicationID, "app", "", "application identifier")
-	flag.StringVar(&params.environmentID, "env", "", "environment identifier")
-	flag.StringVar(&params.configProfileID, "config", "", "config profile identifier")
-	flag.StringVar(&params.deploymentStrategyID, "strategy", "", "deployment strategy identifier")
+func readFlags() (ConfigParams, error) {
+	var params ConfigParams
+	flag.StringVar(&params.applicationID, "app", "", "AppConfig application identifier")
+	flag.StringVar(&params.environmentID, "env", "", "AppConfig environment identifier")
+	flag.StringVar(&params.configProfileID, "config", "", "AppConfig config profile identifier")
+	flag.StringVar(&params.deploymentStrategyID, "strategy", "", "AppConfig deployment strategy identifier")
+
+	flag.StringVar(&params.path, "path", "", "Parameter Store base configuration path")
+
 	flag.BoolVar(&update, "u", false, "update config profile with value from environment")
 	flag.BoolVar(&verbose, "v", false, "verbose output")
+	flag.BoolVar(&debug, "d", false, "debug output")
 	flag.Parse()
 
+	if params.path != "" {
+		if !strings.HasSuffix(params.path, "/") {
+			params.path = params.path + "/"
+		}
+		fmt.Printf("reading from Parameter Store path %q\n", params.path)
+		return params, nil
+	}
+
 	if params.applicationID == "" {
-		fmt.Println("specify application identifier with --app flag")
-		os.Exit(1)
+		return params, fmt.Errorf("no application ID provided. Specify with --app flag")
 	}
 
 	if params.environmentID == "" {
-		fmt.Println("specify environment identifier with --env flag")
-		os.Exit(1)
+		return params, fmt.Errorf("no environment ID provided. Specify with --env flag")
 	}
 
 	if params.configProfileID == "" {
-		fmt.Println("specify config profile identifier with --config flag")
-		os.Exit(1)
+		return params, fmt.Errorf("no config profile ID provided. Specify with --config flag")
 	}
 
 	if update && params.deploymentStrategyID == "" {
-		fmt.Println("deployment strategy identifier is required for update mode, use --strategy flag")
-		os.Exit(1)
-	}
-
-	if flag.NArg() == 0 {
-		fmt.Println("must specify program to execute")
-		os.Exit(1)
+		return params, fmt.Errorf("deployment strategy ID is required for update mode. Use --strategy flag")
 	}
 
 	fmt.Printf("reading from AppConfig app %q, env %q, config profile %q\n",
 		params.applicationID, params.environmentID, params.configProfileID)
 
-	return
+	return params, nil
 }
 
-// getConfig gets the latest configuration from AWS AppConfig for the specified app, profile, and environment
-func getConfig(params AppConfigParams) ([]byte, error) {
+// getConfigFromAppConfig retrieves all parameters from the AppConfig and returns them as a slice of string, where each
+// string is of the form "param=value"
+func getConfigFromAppConfig(params ConfigParams) ([]string, error) {
+	configData, err := getLatestConfig(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get config: %w", err)
+	}
+
+	if update {
+		updatedConfigData, err := updateConfig(params, configData)
+		if err != nil {
+			return nil, err
+		}
+		configData = updatedConfigData
+	}
+
+	vars, err := getVars(configData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vars: %w", err)
+	}
+	return vars, nil
+}
+
+// getLatestConfig gets the latest configuration from AWS AppConfig for the specified app, profile, and environment
+func getLatestConfig(params ConfigParams) ([]byte, error) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -144,8 +177,10 @@ func getVars(config []byte) ([]string, error) {
 		return nil, fmt.Errorf("failed to parse configuration from AppConfig: %w", err)
 	}
 
-	fmt.Printf("read %d lines from AppConfig\n", len(vars))
-	if verbose {
+	if verbose || debug {
+		fmt.Printf("read %d lines from AppConfig\n", len(vars))
+	}
+	if debug {
 		fmt.Printf("vars: %s\n", vars)
 	}
 
@@ -159,7 +194,7 @@ func getVars(config []byte) ([]string, error) {
 
 // updateConfig looks in the config file for variables that should be updated from the local environment, swaps out
 // the value, and sends the new config file to AWS AppConfig
-func updateConfig(params AppConfigParams, configData []byte) ([]byte, error) {
+func updateConfig(params ConfigParams, configData []byte) ([]byte, error) {
 	newCfg, err := replaceConfigValues(configData)
 	if err != nil {
 		return nil, fmt.Errorf("failure replacing values: %w", err)
@@ -170,7 +205,7 @@ func updateConfig(params AppConfigParams, configData []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to deploy config: %w", err)
 	}
 
-	if verbose {
+	if debug {
 		fmt.Printf("updated config: %s\n", newCfg)
 	}
 	return newCfg, nil
@@ -222,14 +257,14 @@ func replaceLine(line, variable, newValue string) (string, error) {
 	// this doesn't preserve style (whitespace and quote type or the absence of a quote) but that's fine for now
 	line = fmt.Sprintf("%s='%s' #%s", variable, newValue, parts[1])
 
-	if verbose {
+	if debug {
 		fmt.Printf("updated variable '%s' to '%s' in config file\n", variable, newValue)
 	}
 	return line, nil
 }
 
 // deployNewConfig submits a new config file to AWS AppConfig and starts a deployment for it
-func deployNewConfig(params AppConfigParams, cfg []byte) error {
+func deployNewConfig(params ConfigParams, cfg []byte) error {
 	ctx := context.Background()
 	awsCfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -263,4 +298,46 @@ func deployNewConfig(params AppConfigParams, cfg []byte) error {
 		return err
 	}
 	return nil
+}
+
+// getConfigFromPS retrieves all parameters from the given path on Parameter Store and returns them as a slice of
+// string, where each string is of the form "param=value"
+func getConfigFromPS(p ConfigParams) ([]string, error) {
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	client := ssm.NewFromConfig(cfg)
+
+	out, err := client.GetParametersByPath(context.Background(), &ssm.GetParametersByPathInput{
+		Path:           &p.path,
+		WithDecryption: aws.Bool(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parameters from SSM: %w", err)
+	}
+
+	vars := make([]string, 0, len(out.Parameters))
+	for _, v := range out.Parameters {
+		if v.Name == nil {
+			_, _ = fmt.Fprintf(os.Stderr, "SSM returned a parameter with nil name\n")
+			continue
+		}
+		name := strings.TrimPrefix(*v.Name, p.path)
+
+		if v.Value == nil {
+			_, _ = fmt.Fprintf(os.Stderr, "SSM returned parameter with nil value: %q\n", name)
+			continue
+		}
+
+		vars = append(vars, name+"="+(*v.Value))
+		if verbose {
+			fmt.Printf("read parameter: %q\n", name)
+		} else if debug {
+			fmt.Printf("read parameter: %q = %q\n", name, *v.Value)
+		}
+	}
+	return vars, nil
 }

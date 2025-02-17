@@ -57,6 +57,16 @@ func Test_getVars(t *testing.T) {
 			config: "A=B\n# comment\nC=D=\nE=\"=F\"\n#G=H",
 			want:   []string{"A=B", "C=D=", "E==F"},
 		},
+		{
+			name:   "json with escaped quote marks",
+			config: `A="{\"type\":\"service_account\"}"`,
+			want:   []string{`A={"type":"service_account"}`},
+		},
+		{
+			name:   "json with unescaped quote marks",
+			config: `A={"type":"service_account"}`,
+			want:   []string{`A={"type":"service_account"}`},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

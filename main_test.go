@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
-func Test_getVars(t *testing.T) {
+func TestGetVars(t *testing.T) {
 	tests := []struct {
 		name   string
 		config string
@@ -87,7 +87,7 @@ func Test_getVars(t *testing.T) {
 	}
 }
 
-func Test_replaceConfigValues(t *testing.T) {
+func TestReplaceConfigValues(t *testing.T) {
 	savedGOOS := os.Getenv("GOOS")
 	defer func() {
 		err := os.Setenv("GOOS", savedGOOS)
@@ -134,7 +134,7 @@ func Test_replaceConfigValues(t *testing.T) {
 	}
 }
 
-func Test_replaceLine(t *testing.T) {
+func TestReplaceLine(t *testing.T) {
 	savedGOOS := os.Getenv("GOOS")
 	defer func() {
 		err := os.Setenv("GOOS", savedGOOS)
@@ -219,7 +219,7 @@ func Test_replaceLine(t *testing.T) {
 	}
 }
 
-func Test_getVarsFromParameters(t *testing.T) {
+func TestGetVarsFromParameters(t *testing.T) {
 	tests := []struct {
 		name       string
 		path       string

@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/appconfig"
 	"github.com/aws/aws-sdk-go-v2/service/appconfigdata"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/joho/godotenv"
 )
 
@@ -303,6 +304,16 @@ func deployNewConfig(params ConfigParams, cfg []byte) error {
 // getConfigFromPS retrieves all parameters from the given path on Parameter Store and returns them as a slice of
 // string, where each string is of the form "param=value"
 func getConfigFromPS(p ConfigParams) ([]string, error) {
+	parameters, err := getAllParameters(p)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parameters from SSM: %w", err)
+	}
+
+	return getVarsFromParameters(p.path, parameters), nil
+}
+
+// getConfigFromPS retrieves all parameters from the given path on Parameter Store
+func getAllParameters(p ConfigParams) ([]types.Parameter, error) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -311,21 +322,37 @@ func getConfigFromPS(p ConfigParams) ([]string, error) {
 
 	client := ssm.NewFromConfig(cfg)
 
-	out, err := client.GetParametersByPath(context.Background(), &ssm.GetParametersByPathInput{
-		Path:           &p.path,
-		WithDecryption: aws.Bool(true),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get parameters from SSM: %w", err)
-	}
+	var parameters []types.Parameter
+	var token *string
+	for {
+		out, err := client.GetParametersByPath(context.Background(), &ssm.GetParametersByPathInput{
+			Path:           &p.path,
+			WithDecryption: aws.Bool(true),
+			NextToken:      token,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get parameters from SSM: %w", err)
+		}
 
-	vars := make([]string, 0, len(out.Parameters))
-	for _, v := range out.Parameters {
+		parameters = append(parameters, out.Parameters...)
+		if out.NextToken == nil || len(out.Parameters) == 0 {
+			break
+		}
+		token = out.NextToken
+	}
+	return parameters, nil
+}
+
+// getVarsFromParameters extracts the parameter name and value from the AWS Parameter list as a slice of
+// string, where each string is of the form "param=value"
+func getVarsFromParameters(path string, parameters []types.Parameter) []string {
+	vars := make([]string, 0, len(parameters))
+	for _, v := range parameters {
 		if v.Name == nil {
 			_, _ = fmt.Fprintf(os.Stderr, "SSM returned a parameter with nil name\n")
 			continue
 		}
-		name := strings.TrimPrefix(*v.Name, p.path)
+		name := strings.TrimPrefix(*v.Name, path)
 
 		if v.Value == nil {
 			_, _ = fmt.Fprintf(os.Stderr, "SSM returned parameter with nil value: %q\n", name)
@@ -339,5 +366,5 @@ func getConfigFromPS(p ConfigParams) ([]string, error) {
 			fmt.Printf("read parameter: %q = %q\n", name, *v.Value)
 		}
 	}
-	return vars, nil
+	return vars
 }

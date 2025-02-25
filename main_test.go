@@ -2,11 +2,15 @@ package main
 
 import (
 	"os"
+	"reflect"
 	"slices"
 	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
-func Test_getVars(t *testing.T) {
+func TestGetVars(t *testing.T) {
 	tests := []struct {
 		name   string
 		config string
@@ -83,7 +87,7 @@ func Test_getVars(t *testing.T) {
 	}
 }
 
-func Test_replaceConfigValues(t *testing.T) {
+func TestReplaceConfigValues(t *testing.T) {
 	savedGOOS := os.Getenv("GOOS")
 	defer func() {
 		err := os.Setenv("GOOS", savedGOOS)
@@ -130,7 +134,7 @@ func Test_replaceConfigValues(t *testing.T) {
 	}
 }
 
-func Test_replaceLine(t *testing.T) {
+func TestReplaceLine(t *testing.T) {
 	savedGOOS := os.Getenv("GOOS")
 	defer func() {
 		err := os.Setenv("GOOS", savedGOOS)
@@ -210,6 +214,35 @@ func Test_replaceLine(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("replaceLine() got = '%v', want '%v'", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetVarsFromParameters(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		parameters []types.Parameter
+
+		want []string
+	}{
+		{
+			name: "a",
+			path: "/path/",
+			parameters: []types.Parameter{
+				{Name: aws.String("/path/foo"), Value: aws.String("foo_value")},
+				{Name: aws.String("/path/bar"), Value: aws.String("bar_value")},
+				{Name: nil, Value: aws.String("nil_name")},
+				{Name: aws.String("/path/nil_value"), Value: nil},
+			},
+			want: []string{"foo=foo_value", "bar=bar_value"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := getVarsFromParameters(tt.path, tt.parameters); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("getVarsFromParameters() = %v, want %v", got, tt.want)
 			}
 		})
 	}

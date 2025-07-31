@@ -22,8 +22,9 @@ import (
 
 var (
 	debug   bool
-	verbose bool
+	fail    bool
 	update  bool
+	verbose bool
 )
 
 type ConfigParams struct {
@@ -87,6 +88,7 @@ func readFlags() (ConfigParams, error) {
 	flag.BoolVar(&update, "u", false, "update config profile with value from environment")
 	flag.BoolVar(&verbose, "v", false, "verbose output")
 	flag.BoolVar(&debug, "d", false, "debug output")
+	flag.BoolVar(&fail, "f", false, "fail if no parameters are found")
 	flag.Parse()
 
 	if params.path != "" {
@@ -139,6 +141,11 @@ func getConfigFromAppConfig(params ConfigParams) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vars: %w", err)
 	}
+
+	if fail && len(vars) == 0 {
+		return nil, fmt.Errorf("no parameters found")
+	}
+
 	return vars, nil
 }
 
@@ -307,6 +314,10 @@ func getConfigFromPS(p ConfigParams) ([]string, error) {
 	parameters, err := getAllParameters(p)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get parameters from SSM: %w", err)
+	}
+
+	if fail && len(parameters) == 0 {
+		return nil, fmt.Errorf("no parameters found")
 	}
 
 	return getVarsFromParameters(p.path, parameters), nil

@@ -35,7 +35,11 @@ type ConfigParams struct {
 }
 
 func main() {
+	// don't print timestamp
 	log.SetFlags(0)
+
+	// stderr is the default, but clarity is a good thing (especially since the default is not documented)
+	log.SetOutput(os.Stderr)
 
 	params, err := readFlags()
 	if err != nil {

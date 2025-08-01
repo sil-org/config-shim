@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -34,15 +35,19 @@ type ConfigParams struct {
 }
 
 func main() {
+	// don't print timestamp
+	log.SetFlags(0)
+
+	// stderr is the default, but clarity is a good thing (especially since the default is not documented)
+	log.SetOutput(os.Stderr)
+
 	params, err := readFlags()
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		os.Exit(1)
+		log.Fatalf("Error: %s", err)
 	}
 
 	if flag.NArg() == 0 {
-		_, _ = fmt.Fprintln(os.Stderr, "Error: must specify program to execute")
-		os.Exit(1)
+		log.Fatal("Error: must specify program to execute")
 	}
 
 	var vars []string
@@ -53,8 +58,7 @@ func main() {
 
 	vars, err = getConfigFunction(params)
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		os.Exit(1)
+		log.Fatalf("Error: %s", err)
 	}
 
 	args := flag.Args()
@@ -64,12 +68,12 @@ func main() {
 	cmd.Stderr = os.Stderr
 
 	if debug {
-		fmt.Printf("running %q with args: %s and env:\n%s\n", args[0], args[1:], strings.Join(cmd.Env, "\n"))
+		log.Printf("running %q with args: %s and env:\n%s", args[0], args[1:], strings.Join(cmd.Env, "\n"))
 	} else if verbose {
-		fmt.Printf("running %q with args: %+v\n", args[0], args[1:])
+		log.Printf("running %q with args: %+v", args[0], args[1:])
 	}
 	if err = cmd.Run(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error: command failed: %s\n", err)
+		log.Printf("Error: command failed: %s", err)
 		os.Exit(2)
 	}
 }
@@ -93,7 +97,7 @@ func readFlags() (ConfigParams, error) {
 		if !strings.HasSuffix(params.path, "/") {
 			params.path = params.path + "/"
 		}
-		fmt.Printf("reading from Parameter Store path %q\n", params.path)
+		log.Printf("reading from Parameter Store path %q", params.path)
 		return params, nil
 	}
 
@@ -113,7 +117,7 @@ func readFlags() (ConfigParams, error) {
 		return params, fmt.Errorf("deployment strategy ID is required for update mode. Use --strategy flag")
 	}
 
-	fmt.Printf("reading from AppConfig app %q, env %q, config profile %q\n",
+	log.Printf("reading from AppConfig app %q, env %q, config profile %q",
 		params.applicationID, params.environmentID, params.configProfileID)
 
 	return params, nil
@@ -179,10 +183,10 @@ func getVars(config []byte) ([]string, error) {
 	}
 
 	if verbose || debug {
-		fmt.Printf("read %d lines from AppConfig\n", len(vars))
+		log.Printf("read %d lines from AppConfig", len(vars))
 	}
 	if debug {
-		fmt.Printf("vars: %s\n", vars)
+		log.Printf("vars: %s", vars)
 	}
 
 	varSlice := make([]string, 0, len(vars))
@@ -207,7 +211,7 @@ func updateConfig(params ConfigParams, configData []byte) ([]byte, error) {
 	}
 
 	if debug {
-		fmt.Printf("updated config: %s\n", newCfg)
+		log.Printf("updated config: %s", newCfg)
 	}
 	return newCfg, nil
 }
@@ -259,7 +263,7 @@ func replaceLine(line, variable, newValue string) (string, error) {
 	line = fmt.Sprintf("%s='%s' #%s", variable, newValue, parts[1])
 
 	if debug {
-		fmt.Printf("updated variable '%s' to '%s' in config file\n", variable, newValue)
+		log.Printf("updated variable '%s' to '%s' in config file", variable, newValue)
 	}
 	return line, nil
 }
@@ -349,21 +353,21 @@ func getVarsFromParameters(path string, parameters []types.Parameter) []string {
 	vars := make([]string, 0, len(parameters))
 	for _, v := range parameters {
 		if v.Name == nil {
-			_, _ = fmt.Fprintf(os.Stderr, "SSM returned a parameter with nil name\n")
+			log.Printf("SSM returned a parameter with nil name")
 			continue
 		}
 		name := strings.TrimPrefix(*v.Name, path)
 
 		if v.Value == nil {
-			_, _ = fmt.Fprintf(os.Stderr, "SSM returned parameter with nil value: %q\n", name)
+			log.Printf("SSM returned parameter with nil value: %q", name)
 			continue
 		}
 
 		vars = append(vars, name+"="+(*v.Value))
 		if verbose {
-			fmt.Printf("read parameter: %q\n", name)
+			log.Printf("read parameter: %q", name)
 		} else if debug {
-			fmt.Printf("read parameter: %q = %q\n", name, *v.Value)
+			log.Printf("read parameter: %q = %q", name, *v.Value)
 		}
 	}
 	return vars

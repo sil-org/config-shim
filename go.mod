@@ -1,4 +1,4 @@
-module github.com/silinternational/config-shim
+module github.com/sil-org/config-shim
 
 go 1.22.0
 

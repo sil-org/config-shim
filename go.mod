@@ -1,6 +1,6 @@
 module github.com/sil-org/config-shim
 
-go 1.22.0
+go 1.25
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.1

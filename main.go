@@ -327,7 +327,7 @@ func getConfigFromPS(p ConfigParams) ([]string, error) {
 	return getVarsFromParameters(p.path, parameters), nil
 }
 
-// getConfigFromPS retrieves all parameters from the given path on Parameter Store
+// getAllParameters retrieves all parameters from the given path on Parameter Store
 func getAllParameters(p ConfigParams) ([]types.Parameter, error) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx)

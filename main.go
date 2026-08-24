@@ -64,7 +64,7 @@ func main() {
 	}
 
 	args := flag.Args()
-	binary, err := exec.LookPath(args[0])
+	path, err := exec.LookPath(args[0])
 	if err != nil {
 		log.Printf("Error: command failed: %s", err)
 		os.Exit(2)
@@ -78,9 +78,9 @@ func main() {
 		log.Printf("running %q with args: %+v", args[0], args[1:])
 	}
 
-	// exec replaces this process so the command inherits its PID and receives the container stop signal; exec.Command
-	// would fork instead, leaving the signal here and the container to be SIGKILLed after the full grace period
-	if err = syscall.Exec(binary, args, env); err != nil {
+	// syscall.Exec replaces this process so the command inherits its PID and receives the stop signal; exec.Command
+	// would fork instead, leaving the signal here and, in a container, the command SIGKILLed after the grace period
+	if err = syscall.Exec(path, args, env); err != nil {
 		log.Printf("Error: command failed: %s", err)
 		os.Exit(2)
 	}

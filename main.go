@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -63,17 +64,23 @@ func main() {
 	}
 
 	args := flag.Args()
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Env = append(os.Environ(), vars...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	path, err := exec.LookPath(args[0])
+	if err != nil {
+		log.Printf("Error: command failed: %s", err)
+		os.Exit(2)
+	}
+
+	env := append(os.Environ(), vars...)
 
 	if debug {
-		log.Printf("running %q with args: %s and env:\n%s", args[0], args[1:], strings.Join(cmd.Env, "\n"))
+		log.Printf("running %q with args: %s and env:\n%s", args[0], args[1:], strings.Join(env, "\n"))
 	} else if verbose {
 		log.Printf("running %q with args: %+v", args[0], args[1:])
 	}
-	if err = cmd.Run(); err != nil {
+
+	// syscall.Exec replaces this process so the command inherits its PID and receives the stop signal; exec.Command
+	// would fork instead, leaving the signal here and, in a container, the command SIGKILLed after the grace period
+	if err = syscall.Exec(path, args, env); err != nil {
 		log.Printf("Error: command failed: %s", err)
 		os.Exit(2)
 	}
